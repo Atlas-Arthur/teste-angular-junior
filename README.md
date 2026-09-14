@@ -2,35 +2,81 @@
 
 ## Sobre o desafio
 
-Você vai desenvolver o frontend de um **painel de acompanhamento de entregas**. Pedidos chegam ao longo do dia, mudam de estado conforme são preparados e entregues, e cada um tem um horário prometido ao cliente.
+Você vai desenvolver o frontend de um painel de acompanhamento de entregas.
 
-O objetivo é avaliar como você lida com uma tela que precisa se manter correta enquanto os dados mudam no servidor. Não avaliamos design, então não gaste tempo com isso.
+Pedidos chegam ao longo do dia, mudam de estado conforme são preparados e entregues, e cada um possui um horário prometido ao cliente.
 
-**Prazo:** 5 dias corridos.
-**Esforço esperado:** 5 a 7 horas.
+O objetivo deste desafio é avaliar seus conhecimentos em Angular, TypeScript, consumo de APIs, organização de código e sua capacidade de manter a interface consistente enquanto os dados mudam em tempo real.
 
-Se algo não couber no tempo, entregue o que fez e escreva no README o que ficaria para depois. Um projeto menor e bem resolvido vale mais que um maior pela metade.
+Não avaliamos design. O foco está na qualidade técnica da solução.
+
+**Prazo:** 5 dias corridos  
+**Esforço esperado:** 5 a 7 horas
+
+Se algo não couber no tempo disponível, entregue o que foi feito e descreva no README o que ficaria para uma próxima etapa.
+
+Um projeto menor e bem resolvido vale mais do que um projeto maior incompleto.
 
 ---
 
-## Stack
+# Stack
+
+Tecnologias obrigatórias:
 
 - Angular 22
-- TypeScript com `strict: true`
+- TypeScript (`strict: true`)
 - pnpm
 - SCSS
 
-A aplicação deve usar componentes standalone e **signals** para o estado. Aplicações novas do Angular 22 já nascem assim, então basta seguir o padrão do `ng new`.
+Requisitos técnicos:
 
-Não use biblioteca de componentes prontos (Material, PrimeNG). CSS próprio é suficiente. Não usamos NgRx nem nada parecido aqui, então não precisa.
+- Standalone Components
+- Angular Signals
+- Angular Router
+
+Não utilize:
+
+- Angular Material
+- PrimeNG
+- NgRx
+- NGXS
+- Akita
+- Bibliotecas de gerenciamento global de estado
+
+CSS próprio é suficiente.
 
 ---
 
-## A API
+# Requisitos de Ambiente
 
-Você recebe um servidor de mock junto com o desafio, com instruções de execução.
+- Node.js 24+
+- pnpm
 
-Erros vêm sempre neste formato:
+---
+
+# API
+
+Uma API já hospedada será disponibilizada juntamente com este desafio.
+
+Não é necessário executar backend localmente.
+
+**Base URL**
+
+```txt
+https://orders-api.planumlabs.com
+```
+
+**Documentação da API**
+
+```txt
+https://orders-api.planumlabs.com/swagger-ui/index.html
+```
+
+---
+
+## Tratamento de Erros
+
+Erros seguem o formato:
 
 ```json
 {
@@ -42,11 +88,24 @@ Erros vêm sempre neste formato:
 }
 ```
 
-Toda resposta inclui o campo **`servidorEm`**, com a hora atual do servidor. Você vai usar esse campo — a seção "Pontos de atenção" explica por quê.
+---
 
-### `GET /pedidos`
+## GET /pedidos
 
-Parâmetros: `page`, `size` (padrão 20), `status`, `busca`, `ordenarPor` (`prometidoPara` ou `criadoEm`), `ordem` (`asc` ou `desc`).
+Lista os pedidos com paginação, filtro e ordenação.
+
+### Parâmetros
+
+| Parâmetro | Descrição |
+|------------|------------|
+| page | Página atual |
+| size | Quantidade por página |
+| status | Filtrar por status |
+| busca | Buscar por cliente |
+| ordenarPor | criadoEm ou prometidoPara |
+| ordem | asc ou desc |
+
+### Exemplo de Resposta
 
 ```json
 {
@@ -71,186 +130,380 @@ Parâmetros: `page`, `size` (padrão 20), `status`, `busca`, `ordenarPor` (`prom
 }
 ```
 
-### `GET /operacao/stream` — Server-Sent Events
+---
 
-Emite as mudanças em tempo real. Cada evento tem um `id` numérico crescente.
+## GET /operacao/stream
 
+Endpoint Server-Sent Events (SSE).
+
+Eventos disponíveis:
+
+### pedido.criado
+
+```text
+event: pedido.criado
 ```
+
+### pedido.transicionado
+
+```text
+event: pedido.transicionado
+```
+
+### heartbeat
+
+```text
+event: heartbeat
+```
+
+Exemplo:
+
+```text
 id: 4471
 event: pedido.criado
-data: {"servidorEm":"...","pedido":{ ... }}
+data: {...}
 
 id: 4472
 event: pedido.transicionado
-data: {"servidorEm":"...","pedidoId":812,"para":"PRONTO","versao":4}
+data: {...}
 
 id: 4473
 event: heartbeat
-data: {"servidorEm":"2026-09-11T14:22:41.000-03:00"}
+data: {...}
 ```
 
-O `heartbeat` chega a cada 10 segundos. A conexão **cai de propósito** a cada poucos minutos, para você lidar com reconexão.
+O heartbeat é enviado a cada 10 segundos.
 
-O `EventSource` nativo do navegador já reconecta sozinho e já reenvia o último `id` recebido. Você não precisa implementar isso na mão, mas precisa entender o que acontece.
+A conexão será encerrada periodicamente de forma proposital para simular falhas de rede.
 
-### `POST /pedidos/{id}/transicoes`
+O navegador já gerencia automaticamente a reconexão utilizando `EventSource`.
 
-```json
-{ "para": "EM_ROTA", "motivo": null }
-```
-
-| Código | Situação |
-|---|---|
-| `200` | Transição aplicada. Retorna o pedido atualizado. |
-| `409` | O pedido já mudou de estado. A `message` informa o estado atual. |
-| `422` | Transição inválida, ou motivo ausente quando obrigatório. |
-
-O mock demora entre 300ms e 1s de propósito.
+Não é necessário implementar um mecanismo próprio de reconexão.
 
 ---
 
-## Estados do pedido
+## POST /pedidos/{id}/transicoes
 
+Altera o estado de um pedido.
+
+### Exemplo
+
+```json
+{
+  "para": "EM_ROTA",
+  "motivo": null
+}
 ```
+
+### Respostas
+
+| Código | Descrição |
+|----------|------------|
+| 200 | Transição aplicada com sucesso |
+| 409 | Pedido já mudou de estado |
+| 422 | Transição inválida ou motivo ausente |
+
+O backend possui um atraso artificial entre 300ms e 1s para simular ambiente real.
+
+---
+
+# Fluxo de Estados
+
+```text
 RECEBIDO ──> EM_PREPARO ──> PRONTO ──> EM_ROTA ──> ENTREGUE
     │             │
     └─────────────┴──────────> CANCELADO
 ```
 
-- `→ CANCELADO` exige `motivo` com no mínimo 10 caracteres.
-- `ENTREGUE` e `CANCELADO` são estados finais.
-- Qualquer outra transição é inválida.
+Regras:
 
-A tela só deve oferecer as ações permitidas pelo estado atual do pedido.
+- CANCELADO exige motivo com no mínimo 10 caracteres
+- ENTREGUE é estado final
+- CANCELADO é estado final
+- Qualquer outra transição é inválida
 
----
-
-## Telas
-
-### 1. `/operacao` — Acompanhamento ao vivo
-
-- Lista dos pedidos ativos (todos menos `ENTREGUE` e `CANCELADO`), atualizada pelo SSE.
-- Cada pedido mostra código, cliente, status e **quanto tempo falta até `prometidoPara`**, atualizando a cada segundo.
-- Destaque visual quando faltam menos de 5 minutos e quando o prazo já passou.
-- Botões de transição conforme o estado.
-- Um indicador mostrando se a conexão está ativa ou reconectando.
-
-### 2. `/pedidos` — Histórico
-
-- Tabela paginada, com filtro por status, busca por nome do cliente e ordenação.
-- **A API já faz paginação, filtro e ordenação.** Use os parâmetros dela, não carregue tudo e filtre no navegador.
-- O filtro e a página atual devem aparecer na URL, de forma que recarregar a página mantenha o que estava sendo visto.
-- A busca não deve disparar uma requisição a cada tecla digitada.
+A interface deve exibir apenas as ações válidas para o estado atual.
 
 ---
 
-## Pontos de atenção
+# Telas
 
-Estes são os pontos que mais pesam na avaliação. Nenhum deles é difícil, mas todos são fáceis de esquecer.
+## 1. /operacao
 
-### 1. Use a hora do servidor, não a do navegador
+Tela de acompanhamento em tempo real.
 
-O relógio do computador do usuário pode estar errado. Se a contagem regressiva usar `Date.now()` direto, ela mostra o número errado e ninguém percebe.
+### Requisitos
 
-O servidor manda `servidorEm` em toda resposta e a cada `heartbeat`. Compare com a hora local uma vez, guarde a diferença, e use essa diferença em todos os cálculos de tempo.
+- Exibir todos os pedidos ativos
+- Excluir ENTREGUE e CANCELADO
+- Atualizar automaticamente via SSE
+- Exibir:
+  - Código
+  - Cliente
+  - Status
+  - Tempo restante até prometidoPara
 
-Você pode testar mudando o relógio do seu sistema operacional. Se a contagem continuar certa, funcionou.
+### Contagem regressiva
 
-Exiba os horários sempre no fuso de São Paulo, independentemente do fuso configurado no navegador.
+A contagem deve atualizar a cada segundo.
 
-### 2. Um evento não pode ser aplicado duas vezes
+Exibir destaque visual:
 
-Quando a conexão cai e volta, o servidor reenvia o que você perdeu. Nessa janela é possível receber de novo algo que você já aplicou.
+- Quando faltarem menos de 5 minutos
+- Quando o prazo já tiver expirado
 
-O campo `versao` do pedido serve para isso: se chegar um evento com versão menor ou igual à que você já tem, ignore.
+### Ações
 
-### 3. O servidor é quem manda
+Permitir transições conforme o estado atual.
 
-Quando o usuário clicar num botão de transição, você pode atualizar a tela na hora, sem esperar a resposta. Mas se a resposta vier `409`, significa que o pedido já estava em outro estado, e a tela precisa se corrigir para o estado que o servidor informou.
+### Conectividade
 
-Também garanta que um clique duplo não envie a mesma ação duas vezes.
+Exibir indicador visual:
 
-### 4. As regras de transição num lugar só
-
-Espalhar `@if (pedido.status === 'PRONTO')` pelos templates funciona, mas vira problema quando surge um estado novo. Prefira uma estrutura que responda "quais ações são possíveis a partir deste estado", e use ela nos componentes.
-
-### 5. Navegação por teclado
-
-Todos os botões devem ser acionáveis por teclado, com foco visível. Não precisa ir além disso.
-
----
-
-## Uma decisão para você tomar
-
-O usuário abre o formulário de cancelamento de um pedido e, enquanto digita o motivo, chega pelo SSE a informação de que aquele pedido já mudou de estado.
-
-Decida o que sua aplicação faz nesse caso, implemente, e explique a escolha no README. Não existe resposta certa única — queremos entender seu raciocínio.
+- Conectado
+- Reconectando
 
 ---
 
-## Testes
+## 2. /pedidos
 
-Dois testes unitários são suficientes:
+Histórico de pedidos.
 
-1. O cálculo do tempo restante, incluindo o caso em que o prazo já passou.
-2. A função que decide quais transições são possíveis a partir de um estado.
+### Requisitos
 
-Se sobrar tempo e vontade, testes de componente são bem-vindos, mas não são esperados.
+Tabela paginada contendo:
+
+- Código
+- Cliente
+- Status
+- Data de criação
+- Prazo prometido
+
+### Funcionalidades
+
+- Paginação server-side
+- Filtro por status
+- Busca por cliente
+- Ordenação
+
+Importante:
+
+A API já executa paginação, filtro e ordenação.
+
+Não carregue todos os registros para processar no navegador.
+
+### URL
+
+A página atual e os filtros devem permanecer sincronizados com a URL.
+
+Ao atualizar a página, o estado deve ser restaurado.
+
+### Busca
+
+Não realizar uma requisição a cada tecla digitada.
 
 ---
 
-## Entrega
+# Pontos de Atenção
 
-Repositório no GitHub com:
-
-- Instruções de instalação e execução com pnpm
-- Como rodar os testes
-- `README.md` com suas decisões técnicas
-
-No README, responda com algumas frases cada:
-
-1. Como você usou o `servidorEm` para corrigir a contagem regressiva.
-2. Como você garantiu que um evento não é aplicado duas vezes.
-3. Como o filtro e a página ficam guardados na URL.
-4. A decisão da seção anterior, e por quê.
-5. O que ficou de fora e o que você faria com mais tempo.
-
-Não precisa ser longo. Precisa ser claro sobre o que você pensou.
+Estes são os critérios mais importantes da avaliação.
 
 ---
 
-## Diferenciais
+## 1. Hora do Servidor
 
-Nenhum é obrigatório. Entregue as duas telas primeiro.
+Não utilize apenas `Date.now()` para calcular o tempo restante.
 
-- `httpResource` para carregar o histórico, com tratamento de carregando e erro
-- Interceptor traduzindo o corpo de erro padronizado numa mensagem amigável
-- Tela de detalhe do pedido com a linha do tempo de eventos
+O relógio do usuário pode estar incorreto.
+
+Utilize o campo:
+
+```json
+{
+  "servidorEm": "..."
+}
+```
+
+Calcule a diferença entre o horário do servidor e o horário local uma única vez e utilize essa diferença em todos os cálculos.
+
+Os horários devem ser exibidos sempre considerando o fuso horário de São Paulo.
+
+---
+
+## 2. Eventos Duplicados
+
+Quando a conexão SSE for restabelecida, eventos podem ser reenviados.
+
+Utilize o campo:
+
+```json
+{
+  "versao": 4
+}
+```
+
+Eventos com versão menor ou igual à já aplicada devem ser ignorados.
+
+---
+
+## 3. O Servidor é a Fonte da Verdade
+
+Ao realizar uma transição:
+
+- A interface pode ser atualizada imediatamente
+- Caso a API retorne 409, o estado deve ser corrigido para refletir o estado informado pelo servidor
+
+Também garanta que um clique duplo não envie múltiplas requisições.
+
+---
+
+## 4. Centralização das Regras
+
+Evite espalhar verificações de status pelos templates.
+
+Prefira uma estrutura centralizada responsável por responder:
+
+> Quais transições são válidas para este estado?
+
+---
+
+## 5. Navegação por Teclado
+
+Todos os botões devem:
+
+- Ser acessíveis por teclado
+- Possuir foco visível
+
+Não é necessário implementar requisitos avançados de acessibilidade.
+
+---
+
+# Decisão Arquitetural
+
+Considere o cenário:
+
+O usuário abre o formulário de cancelamento de um pedido.
+
+Enquanto digita o motivo, chega um evento SSE informando que o pedido mudou de estado.
+
+Decida como sua aplicação irá reagir.
+
+Implemente a solução escolhida e explique sua decisão no README.
+
+Não existe uma resposta única correta.
+
+Queremos entender seu raciocínio.
+
+---
+
+# Testes
+
+Os seguintes testes unitários são obrigatórios:
+
+1. Cálculo do tempo restante
+2. Regras de transição entre estados
+
+Testes adicionais são opcionais.
+
+---
+
+# Entrega
+
+Publicar a solução em um repositório GitHub.
+
+O projeto deve conter:
+
+- Código-fonte
+- README.md
+- Instruções de instalação
+- Instruções de execução
+- Instruções para execução dos testes
+
+---
+
+# README do Projeto
+
+No README entregue, responda brevemente:
+
+### 1.
+
+Como foi implementado o cálculo baseado em `servidorEm`.
+
+### 2.
+
+Como foi evitada a aplicação duplicada de eventos.
+
+### 3.
+
+Como filtros e paginação foram sincronizados com a URL.
+
+### 4.
+
+Qual decisão foi tomada para o cenário de conflito durante o cancelamento.
+
+### 5.
+
+O que ficou de fora e o que seria implementado com mais tempo.
+
+---
+
+# Diferenciais
+
+Nenhum dos itens abaixo é obrigatório.
+
+Priorize a entrega das duas telas principais.
+
+- Utilização de `httpResource`
+- Interceptor para tratamento global de erros
+- Tela de detalhe do pedido
+- Linha do tempo de eventos
 - Tema claro e escuro
-- Docker ou deploy online
+- Docker
+- Deploy online
 
 ---
 
-## O que avaliamos
+# O que Esperamos Ver
+
+- Componentização adequada
+- Uso correto de Signals
+- Boas práticas Angular
+- Consumo de API tipado
+- Tratamento de erros
+- Organização de código
+- Responsividade básica
+- Código legível e de fácil manutenção
+
+---
+
+# Critérios de Avaliação
 
 | Peso | Critério |
-|---|---|
-| 25% | Tratamento correto do tempo: hora do servidor e fuso |
-| 20% | Atualização em tempo real sem duplicar evento |
-| 20% | Reação correta ao `409` e ao `422`, sem envio duplo |
-| 15% | Regras de transição centralizadas e tipagem sem `any` |
-| 10% | Uso da paginação e do filtro da API, e sincronia com a URL |
-| 10% | Organização, componentização e legibilidade |
-
-## O que não avaliamos
-
-- Design, paleta, animação, pixel perfect
-- Framework ou metodologia de CSS
-- Quantidade de testes
-- Cobertura de casos que não estão no enunciado
+|--------|-----------|
+| 20% | Angular e uso de Signals |
+| 20% | Organização e componentização |
+| 20% | Tratamento correto da hora do servidor |
+| 15% | Atualização em tempo real via SSE |
+| 15% | Tratamento de erros (409 e 422) |
+| 10% | Paginação, filtros e sincronização com URL |
 
 ---
 
-## Se travar
+# O que Não Avaliamos
 
-Se algum ponto do enunciado não estiver claro, escreva para nós. Perguntar não desconta nota. Entregar algo travado por causa de uma dúvida que a gente responderia em dois minutos, sim.
+- Design visual
+- Paleta de cores
+- Pixel perfect
+- Framework CSS utilizado
+- Quantidade de testes
+- Cobertura de casos não descritos no enunciado
+
+---
+
+# Dúvidas
+
+Se algum ponto não estiver claro, entre em contato.
+
+Perguntar não desconta nota.
+
+Ficar bloqueado por uma dúvida simples pode prejudicar sua entrega desnecessariamente.
